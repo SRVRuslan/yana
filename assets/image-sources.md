@@ -9,8 +9,8 @@
 - `service-regular.jpg`: Unsplash source image — `photo-1600210492486-724fe5c67fb0`.
 - `service-deep.jpg`: Unsplash source image — `photo-1556912172-45b7abe8b7e1`.
 - `service-move.jpg`: Unsplash source image — `photo-1600607687920-4e2a09cf159d`.
-- `service-commercial.jpg`: Unsplash source image — `photo-1497366811353-6870744d04b2`.
-- `service-airbnb.jpg`: Unsplash source image — `photo-1616594039964-ae9021a400a0`.
-- `service-carpet.jpg`: Unsplash source image — `photo-1586023492125-27b2c045efd7`.
+- `service-commercial.jpg`: supplied by the site owner as `f58ac96c-2c40-4280-8aed-cba4ee7783cd.png` and optimized to JPEG for the site.
+- `service-airbnb.jpg`: supplied by the site owner as `ChatGPT Image 10 вер. 2026 р., 00_04_47.png` and optimized to JPEG for the site.
+- `service-carpet.jpg`: supplied by the site owner as `f1901006-03f8-4835-8886-6f8673c16b2c.png` and optimized to JPEG for the site.
 
 Unsplash images were downloaded through the Unsplash image CDN for this local site concept. Verify licensing and attribution requirements before commercial launch.
