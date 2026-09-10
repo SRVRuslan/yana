@@ -14,6 +14,7 @@
     menuIsOpen = Boolean(open && !desktopQuery.matches);
     body.classList.toggle('menu-open', menuIsOpen);
     menuToggle?.setAttribute('aria-expanded', String(menuIsOpen));
+    menuToggle?.setAttribute('aria-label', menuIsOpen ? 'Close menu' : 'Open menu');
 
     if (siteNav) {
       siteNav.inert = !desktopQuery.matches && !menuIsOpen;
