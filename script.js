@@ -431,6 +431,10 @@
   }
 
   if (heroCarousel && carouselSlides.length > 1) {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => heroCarousel.classList.add('hero-carousel-ready'));
+    });
+
     heroCarousel.querySelector('[data-carousel-prev]')?.addEventListener('click', () => showCarouselSlide(carouselIndex - 1, true));
     heroCarousel.querySelector('[data-carousel-next]')?.addEventListener('click', () => showCarouselSlide(carouselIndex + 1, true));
     carouselDots.forEach((dot, index) => dot.addEventListener('click', () => showCarouselSlide(index, true)));
