@@ -60,7 +60,8 @@
 
   const quoteDialog = document.querySelector('#quote-dialog');
   const serviceDialog = document.querySelector('#service-dialog');
-  const dialogs = [quoteDialog, serviceDialog].filter(Boolean);
+  const reviewDialog = document.querySelector('#review-dialog');
+  const dialogs = [quoteDialog, serviceDialog, reviewDialog].filter(Boolean);
   const returnFocus = new WeakMap();
   const backdropPointerDown = new WeakMap();
 
@@ -133,7 +134,7 @@
         'Wipe the interiors of empty cupboards and drawers',
         'Clean accessible baseboards, doors, and windowsills',
         'Vacuum and mop accessible floors throughout the home',
-        'Add oven, fridge, or interior window cleaning to your estimate',
+        'Confirm appliance and interior window needs when planning the scope',
       ],
     },
     airbnb: {
@@ -158,6 +159,17 @@
         'Explain expected drying time and aftercare before service',
       ],
     },
+    'post-construction': {
+      title: 'Post-construction cleaning',
+      description: 'Detailed cleaning after building or renovation work, planned around the dust, debris, surfaces, and condition of the space.',
+      items: [
+        'Remove fine construction dust from accessible surfaces',
+        'Wipe doors, trim, baseboards, fixtures, and cabinetry exteriors',
+        'Clean kitchens, bathrooms, and newly finished areas',
+        'Vacuum and mop accessible floors throughout the space',
+        'Confirm debris, adhesive, paint, and specialty-cleaning needs in advance',
+      ],
+    },
   };
 
   const quoteForm = document.querySelector('#quote-form');
@@ -165,32 +177,32 @@
   const quoteStatus = document.querySelector('#quote-status');
   const currency = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 });
   const frequencyLabels = { weekly: 'Every week', biweekly: 'Every two weeks', monthly: 'Every month', once: 'One-time clean' };
-  const extraLabels = { oven: 'Inside oven', fridge: 'Inside fridge', windows: 'Interior windows' };
-  const discounts = { weekly: 0.85, biweekly: 0.9, monthly: 0.95, once: 1 };
+  const squareFootageLabels = {
+    'under-1000': 'Under 1,000 sq ft',
+    '1000-1499': '1,000–1,499 sq ft',
+    '1500-1999': '1,500–1,999 sq ft',
+    '2000-2499': '2,000–2,499 sq ft',
+    '2500-2999': '2,500–2,999 sq ft',
+    '3000-plus': '3,000+ sq ft',
+  };
 
   function readQuote() {
     if (!quoteForm) return null;
     const values = new FormData(quoteForm);
     const selectedService = String(values.get('service') || 'residential');
     const service = Object.hasOwn(services, selectedService) ? selectedService : 'residential';
-    const bedrooms = Math.max(1, Math.min(5, Number(values.get('bedrooms')) || 1));
+    const selectedSquareFeet = String(values.get('squareFeet') || '1000-1499');
+    const squareFeet = Object.hasOwn(squareFootageLabels, selectedSquareFeet) ? selectedSquareFeet : '1000-1499';
     const bathrooms = Math.max(1, Math.min(4, Number(values.get('bathrooms')) || 1));
+    const notes = String(values.get('notes') || '').trim().slice(0, 1200);
     const selectedFrequency = String(values.get('frequency') || 'once');
     const recurringServices = ['residential', 'commercial', 'airbnb'];
-    const frequency = recurringServices.includes(service) && Object.hasOwn(discounts, selectedFrequency) ? selectedFrequency : 'once';
-    const extras = Array.from(quoteForm.querySelectorAll('input[type="checkbox"]:checked'))
-      .map((input) => input.value)
-      .filter((value) => Object.hasOwn(extraLabels, value));
-    const extraPrices = { oven: 30, fridge: 25, windows: 40 };
-    const startingPrices = { residential: 110, commercial: 180, move: 260, airbnb: 140, carpet: 120 };
-    const areaIncrement = service === 'carpet' ? 35 : service === 'commercial' ? 45 : 25;
-    const washroomIncrement = service === 'carpet' ? 0 : 20;
-    const applicableExtras = service === 'carpet' ? [] : extras;
-    const subtotal = startingPrices[service] + (bedrooms - 1) * areaIncrement + (bathrooms - 1) * washroomIncrement + applicableExtras.reduce((total, extra) => total + extraPrices[extra], 0);
-    const total = subtotal * discounts[frequency];
-    const roundToFive = (amount) => Math.round(amount / 5) * 5;
+    const validFrequency = Object.hasOwn(frequencyLabels, selectedFrequency);
+    const frequency = recurringServices.includes(service) && validFrequency ? selectedFrequency : 'once';
+    const hourlyRates = { standard: 35, 'post-construction': 40 };
+    const rate = service === 'post-construction' ? hourlyRates['post-construction'] : hourlyRates.standard;
 
-    return { service, bedrooms, bathrooms, frequency, extras: applicableExtras, low: roundToFive(total * 0.85), high: roundToFive(total * 1.15) };
+    return { service, squareFeet, bathrooms, frequency, rate, notes };
   }
 
   function updateQuote(clearStatus = true) {
@@ -198,24 +210,17 @@
     const serviceSelect = quoteForm.elements.namedItem('service');
     const recurring = ['residential', 'commercial', 'airbnb'].includes(serviceSelect?.value);
     if (frequencyOptions) frequencyOptions.disabled = !recurring;
-    const extrasOptions = document.querySelector('#extras-options');
-    if (extrasOptions) extrasOptions.disabled = serviceSelect?.value === 'carpet';
-    const spaceLabel = document.querySelector('#space-count-label');
-    if (spaceLabel) spaceLabel.textContent = serviceSelect?.value === 'carpet' ? 'Carpeted rooms / areas' : serviceSelect?.value === 'commercial' ? 'Work areas / zones' : 'Bedrooms / areas';
+    const bathroomSelect = quoteForm.elements.namedItem('bathrooms');
+    if (bathroomSelect instanceof HTMLSelectElement) bathroomSelect.disabled = serviceSelect?.value === 'carpet';
     const quote = readQuote();
     if (!quote) return null;
 
-    const low = document.querySelector('#estimate-low');
-    const high = document.querySelector('#estimate-high');
+    const rate = document.querySelector('#estimate-rate');
     const frequency = document.querySelector('#estimate-frequency');
     const note = document.querySelector('#estimate-note');
-    if (low) low.textContent = currency.format(quote.low);
-    if (high) high.textContent = currency.format(quote.high);
-    if (frequency) frequency.textContent = `${frequencyLabels[quote.frequency]} · per visit`;
-    if (note) {
-      const percent = Math.round((1 - discounts[quote.frequency]) * 100);
-      note.textContent = percent ? `Includes an illustrative ${percent}% recurring-care saving.` : 'One-time planning estimate. Final pricing depends on your space and cleaning needs.';
-    }
+    if (rate) rate.textContent = currency.format(quote.rate);
+    if (frequency) frequency.textContent = `${frequencyLabels[quote.frequency]} · ${services[quote.service].title}`;
+    if (note) note.textContent = `Selected space: ${squareFootageLabels[quote.squareFeet]}${quote.service === 'carpet' ? '' : ` · ${quote.bathrooms} bathroom${quote.bathrooms === 1 ? '' : 's'}`}.`;
     if (clearStatus && quoteStatus) quoteStatus.textContent = '';
     return quote;
   }
@@ -243,6 +248,13 @@
     if (quoteButton) {
       event.preventDefault();
       openQuote(quoteButton, quoteButton.dataset.service);
+      return;
+    }
+
+    const reviewButton = event.target.closest('[data-open-review]');
+    if (reviewButton) {
+      event.preventDefault();
+      openDialog(reviewDialog, reviewButton);
       return;
     }
 
@@ -289,21 +301,22 @@
       const date = new Date();
       const formattedDate = new Intl.DateTimeFormat('en-CA', { dateStyle: 'long' }).format(date);
       const lines = [
-        'CARE & CLEAN HOME INC. — YOUR CLEANING ESTIMATE',
+        'CARE & CLEAN HOME INC. — CLEANING RATE SUMMARY',
         'Calgary, Alberta',
         `Prepared: ${formattedDate}`,
         '',
         `Service: ${services[quote.service].title}`,
-        `Rooms / areas: ${quote.bedrooms}`,
-        `Bathrooms / washrooms: ${quote.service === 'carpet' ? 'Not used for carpet estimate' : quote.bathrooms}`,
+        `Square feet: ${squareFootageLabels[quote.squareFeet]}`,
+        `Bathrooms / washrooms: ${quote.service === 'carpet' ? 'Not applicable' : quote.bathrooms}`,
         `Frequency: ${frequencyLabels[quote.frequency]}`,
-        `Extras: ${quote.extras.length ? quote.extras.map((extra) => extraLabels[extra]).join(', ') : 'None selected'}`,
+        `Additional details: ${quote.notes || 'Not provided'}`,
         '',
-        `Illustrative estimate: ${currency.format(quote.low)}–${currency.format(quote.high)} CAD per visit`,
-        'Taxes are not included.',
+        `Hourly rate: ${currency.format(quote.rate)} CAD per hour for one cleaner`,
+        'Applicable taxes are not included.',
         '',
-        'This is a planning estimate, not a confirmed price or appointment.',
-        'Final pricing depends on your space, its condition, and the agreed scope.',
+        'This is a rate summary, not a confirmed total or appointment.',
+        'The final cleaning cost depends on the amount of work, the condition of the space, and the time required.',
+        'The scope and anticipated hours must be confirmed before booking.',
         'No booking has been made, and no information has been sent.',
       ];
       const file = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
@@ -311,15 +324,59 @@
       const link = document.createElement('a');
       const localDate = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
       link.href = url;
-      link.download = `care-clean-estimate-${localDate}.txt`;
+      link.download = `care-clean-rate-summary-${localDate}.txt`;
       body.append(link);
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (quoteStatus) quoteStatus.textContent = 'Your estimate has been downloaded. No booking has been made.';
+      if (quoteStatus) quoteStatus.textContent = 'Your rate summary has been downloaded. No booking has been made.';
     });
     updateQuote();
   }
+
+  const reviewForm = document.querySelector('#review-form');
+  const reviewMessage = document.querySelector('#review-message');
+  const reviewCharacterCount = document.querySelector('#review-character-count');
+  const reviewStatus = document.querySelector('#review-status');
+
+  function updateReviewCharacterCount() {
+    if (reviewMessage && reviewCharacterCount) reviewCharacterCount.textContent = String(reviewMessage.value.length);
+  }
+
+  reviewMessage?.addEventListener('input', updateReviewCharacterCount);
+  updateReviewCharacterCount();
+
+  reviewForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!reviewForm.reportValidity()) return;
+
+    const values = new FormData(reviewForm);
+    const name = String(values.get('name') || '').trim();
+    const email = String(values.get('email') || '').trim();
+    const service = String(values.get('service') || '').trim();
+    const visitDate = String(values.get('visit-date') || '').trim();
+    const rating = String(values.get('rating') || '').trim();
+    const review = String(values.get('review') || '').trim();
+    const subject = `Client review from ${name}`;
+    const message = [
+      'CARE & CLEAN HOME INC. — CLIENT REVIEW',
+      '',
+      `First name: ${name}`,
+      `Contact email: ${email}`,
+      `Service: ${service}`,
+      `Approximate visit date: ${visitDate || 'Not provided'}`,
+      `Rating: ${rating}/5`,
+      '',
+      'Review:',
+      review,
+      '',
+      'Permission confirmed: This is my own experience. Care & Clean may contact me to verify it, and may publish my first name and review after verification.',
+    ].join('\n');
+    const mailto = `mailto:care.cleanyyc@outlook.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+
+    if (reviewStatus) reviewStatus.textContent = 'Your email app is opening. Please send the prepared message to submit your review.';
+    window.location.href = mailto;
+  });
 
   const heroCarousel = document.querySelector('[data-hero-carousel]');
   const carouselSlides = heroCarousel ? Array.from(heroCarousel.querySelectorAll('[data-carousel-slide]')) : [];
