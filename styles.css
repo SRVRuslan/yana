@@ -43,7 +43,7 @@ h3{font-size:22px;line-height:1.2;letter-spacing:-.025em}
 .button{display:inline-flex;align-items:center;justify-content:center;gap:24px;min-height:56px;padding:15px 20px 15px 24px;border:1px solid var(--terracotta);border-radius:0;background:var(--terracotta);color:#fffaf3;font-size:13px;font-weight:700;letter-spacing:.04em;cursor:pointer;transition:background .25s,border-color .25s,transform .25s}
 .button .icon{width:19px;height:19px}
 .button:hover{background:var(--terracotta-dark);border-color:var(--terracotta-dark);transform:translateY(-2px)}
-.button:focus-visible,.text-link:focus-visible,.service-link:focus-visible,.menu-toggle:focus-visible,.dialog-close:focus-visible,.carousel-arrow:focus-visible,.carousel-dots button:focus-visible,summary:focus-visible,.announcement a:focus-visible,.footer-links a:focus-visible,.footer-links button:focus-visible,.developer-credit:focus-visible{outline:2px solid var(--terracotta);outline-offset:4px}
+.button:focus-visible,.text-link:focus-visible,.service-link:focus-visible,.menu-toggle:focus-visible,.dialog-close:focus-visible,.carousel-arrow:focus-visible,.carousel-dots button:focus-visible,summary:focus-visible,.announcement a:focus-visible,.brand:focus-visible,.site-nav a:focus-visible,.footer-links a:focus-visible,.footer-links button:focus-visible,.footer-local a:focus-visible,.developer-credit:focus-visible{outline:2px solid var(--terracotta);outline-offset:4px}
 .button-small{min-height:44px;padding:10px 14px 10px 18px;gap:14px;font-size:12px}
 .text-link{display:inline-flex;align-items:center;gap:13px;border:0;border-bottom:1px solid currentColor;padding:4px 0;background:none;color:var(--ink);font-size:13px;font-weight:700;letter-spacing:.02em;cursor:pointer}
 .text-link .icon{width:17px;height:17px;transition:transform .2s}
@@ -81,7 +81,7 @@ h3{font-size:22px;line-height:1.2;letter-spacing:-.025em}
 .hero-description{max-width:525px;margin:32px 0 35px;color:var(--ink-soft);font-size:17px;line-height:1.7}
 .hero-actions{display:flex;align-items:center;gap:30px}
 .hero-note{display:flex;align-items:center;gap:13px;margin-top:47px;color:var(--ink);font-size:11px;font-weight:650;letter-spacing:.025em;line-height:1.6}
-.hero-note span{color:#7a867d;font-weight:450}
+.hero-note span{color:#606d64;font-weight:450}
 .note-icon{display:grid;place-items:center;width:39px;height:39px;border:1px solid #c8cebd;border-radius:50%;background:#eef0e7;color:var(--sage-dark)}
 .note-icon .icon{width:18px;height:18px}
 .hero-visual{position:relative;align-self:stretch;min-height:590px;margin-right:max(0px,calc((100vw - 1280px)/-2 + 5px));touch-action:pan-y}
