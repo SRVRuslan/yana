@@ -188,14 +188,17 @@
 
   function readQuote() {
     if (!quoteForm) return null;
-    const values = new FormData(quoteForm);
-    const selectedService = String(values.get('service') || 'residential');
+    const fieldValue = (name) => {
+      const field = quoteForm.elements.namedItem(name);
+      return field && 'value' in field ? String(field.value) : '';
+    };
+    const selectedService = fieldValue('service') || 'residential';
     const service = Object.hasOwn(services, selectedService) ? selectedService : 'residential';
-    const selectedSquareFeet = String(values.get('squareFeet') || '1000-1499');
+    const selectedSquareFeet = fieldValue('squareFeet') || '1000-1499';
     const squareFeet = Object.hasOwn(squareFootageLabels, selectedSquareFeet) ? selectedSquareFeet : '1000-1499';
-    const bathrooms = Math.max(1, Math.min(4, Number(values.get('bathrooms')) || 1));
-    const notes = String(values.get('notes') || '').trim().slice(0, 1200);
-    const selectedFrequency = String(values.get('frequency') || 'once');
+    const bathrooms = Math.max(1, Math.min(4, Number(fieldValue('bathrooms')) || 1));
+    const notes = fieldValue('notes').trim().slice(0, 1200);
+    const selectedFrequency = fieldValue('frequency') || 'once';
     const recurringServices = ['residential', 'commercial', 'airbnb'];
     const validFrequency = Object.hasOwn(frequencyLabels, selectedFrequency);
     const frequency = recurringServices.includes(service) && validFrequency ? selectedFrequency : 'once';
@@ -236,6 +239,15 @@
 
   document.addEventListener('click', (event) => {
     if (!(event.target instanceof Element)) return;
+
+    const emailLink = event.target.closest('[data-email-link]');
+    if (emailLink) {
+      event.preventDefault();
+      const address = emailLink.dataset.emailLink;
+      const subject = emailLink.dataset.emailSubject;
+      if (address) window.location.href = `mailto:${address}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`;
+      return;
+    }
 
     const closeButton = event.target.closest('[data-close-dialog]');
     if (closeButton) {
