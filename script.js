@@ -204,8 +204,10 @@
     const frequency = recurringServices.includes(service) && validFrequency ? selectedFrequency : 'once';
     const hourlyRates = { standard: 35, 'post-construction': 40 };
     const rate = service === 'post-construction' ? hourlyRates['post-construction'] : hourlyRates.standard;
+    const isCarpet = service === 'carpet';
+    const rateText = isCarpet ? `${currency.format(40)}–${currency.format(60)}` : currency.format(rate);
 
-    return { service, squareFeet, bathrooms, frequency, rate, notes };
+    return { service, squareFeet, bathrooms, frequency, rate, rateText, isCarpet, notes };
   }
 
   function updateQuote(clearStatus = true) {
@@ -219,11 +221,25 @@
     if (!quote) return null;
 
     const rate = document.querySelector('#estimate-rate');
+    const rateLabel = document.querySelector('#estimate-rate-label');
+    const rateUnit = document.querySelector('#estimate-rate-unit');
     const frequency = document.querySelector('#estimate-frequency');
     const note = document.querySelector('#estimate-note');
-    if (rate) rate.textContent = currency.format(quote.rate);
+    const disclaimerLead = document.querySelector('#estimate-disclaimer-lead');
+    const disclaimerDetails = document.querySelector('#estimate-disclaimer-details');
+    if (rate) rate.textContent = quote.rateText;
+    if (rateLabel) rateLabel.textContent = quote.isCarpet ? 'Carpet cleaning rate' : 'Hourly cleaning rate';
+    if (rateUnit) rateUnit.textContent = quote.isCarpet ? 'CAD / room' : 'CAD / hour · 1 cleaner';
     if (frequency) frequency.textContent = `${frequencyLabels[quote.frequency]} · ${services[quote.service].title}`;
-    if (note) note.textContent = `Selected space: ${squareFootageLabels[quote.squareFeet]}${quote.service === 'carpet' ? '' : ` · ${quote.bathrooms} bathroom${quote.bathrooms === 1 ? '' : 's'}`}.`;
+    if (note) note.textContent = quote.isCarpet
+      ? 'The rate per room depends on the size of the room.'
+      : `Selected space: ${squareFootageLabels[quote.squareFeet]} · ${quote.bathrooms} bathroom${quote.bathrooms === 1 ? '' : 's'}.`;
+    if (disclaimerLead) disclaimerLead.textContent = quote.isCarpet
+      ? 'Final carpet cleaning cost depends on room size.'
+      : 'Final cleaning cost depends on the amount of work.';
+    if (disclaimerDetails) disclaimerDetails.textContent = quote.isCarpet
+      ? ' The rate shown is before tax and is charged per room. The number, size, and condition of the rooms will determine the final price. Scope is confirmed before booking.'
+      : ' The rate shown is before tax and is charged per cleaner, per hour. The condition of the space, cleaning priorities, and total time required will determine the final price. Scope and anticipated hours are confirmed before booking.';
     if (clearStatus && quoteStatus) quoteStatus.textContent = '';
     return quote;
   }
@@ -312,6 +328,15 @@
 
       const date = new Date();
       const formattedDate = new Intl.DateTimeFormat('en-CA', { dateStyle: 'long' }).format(date);
+      const pricingLines = quote.isCarpet
+        ? [`Carpet cleaning rate: ${quote.rateText} CAD per room`, 'The rate per room depends on the size of the room.']
+        : [`Hourly rate: ${quote.rateText} CAD per hour for one cleaner`];
+      const finalPriceNote = quote.isCarpet
+        ? 'The final carpet cleaning cost depends on the number, size, and condition of the rooms.'
+        : 'The final cleaning cost depends on the amount of work, the condition of the space, and the time required.';
+      const confirmationNote = quote.isCarpet
+        ? 'The number of rooms, room sizes, and final scope must be confirmed before booking.'
+        : 'The scope and anticipated hours must be confirmed before booking.';
       const lines = [
         'CARE & CLEAN HOME INC. — CLEANING RATE SUMMARY',
         'Calgary, Alberta',
@@ -323,12 +348,12 @@
         `Frequency: ${frequencyLabels[quote.frequency]}`,
         `Additional details: ${quote.notes || 'Not provided'}`,
         '',
-        `Hourly rate: ${currency.format(quote.rate)} CAD per hour for one cleaner`,
+        ...pricingLines,
         'Applicable taxes are not included.',
         '',
         'This is a rate summary, not a confirmed total or appointment.',
-        'The final cleaning cost depends on the amount of work, the condition of the space, and the time required.',
-        'The scope and anticipated hours must be confirmed before booking.',
+        finalPriceNote,
+        confirmationNote,
         'No booking has been made, and no information has been sent.',
       ];
       const file = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
