@@ -4,10 +4,13 @@ The estimate and review forms are served with the static site by one Cloudflare 
 
 ## 1. Onboard the domain for Email Sending
 
-1. Keep `carecleanhome.ca` DNS on Cloudflare.
+Email Routing is enabled for `carecleanhome.ca`, and `care.cleanyyc@outlook.com` is a verified destination. This allows owner notifications on Workers Free.
+
+To send automatic replies to arbitrary client addresses:
+
+1. Upgrade the account to Workers Paid.
 2. In the Cloudflare dashboard, open **Compute > Email Service > Email Sending**.
 3. Select **Onboard Domain** for `carecleanhome.ca` and complete the DNS checks.
-4. Verify `care.cleanyyc@outlook.com` as an allowed destination in the account.
 
 The Worker sends from `reviews@carecleanhome.ca`. The visitor's address is used as `replyTo`, so replying to the notification in Outlook replies to the client.
 
@@ -44,9 +47,9 @@ The deployment configuration attaches both `carecleanhome.ca` and `www.careclean
 
 ## 4. Email modes
 
-`ENABLE_AUTOREPLY` is enabled. The owner notification is sent to the verified Outlook address, and the client receives a short confirmation that their request was received and that the team will respond shortly. The estimate notification includes the client's name, phone, email, selected service, space details, frequency, notes, and planning rate.
+`ENABLE_AUTOREPLY` is enabled. The owner notification is sent to the verified Outlook address. When Workers Paid and Email Sending domain onboarding are active, the client also receives a short confirmation that their request was received and that the team will respond shortly. The estimate notification includes the client's name, phone, email, selected service, space details, frequency, notes, and planning rate.
 
-The separate `EMAIL` binding is restricted to the `hello@carecleanhome.ca` sender. Sending the acknowledgement to arbitrary client addresses requires Workers Paid. To temporarily disable it, change `ENABLE_AUTOREPLY` to `false` and redeploy.
+The separate `EMAIL` binding is restricted to the `hello@carecleanhome.ca` sender. Sending the acknowledgement to arbitrary client addresses requires Workers Paid. On Workers Free, an acknowledgement failure does not discard the owner's notification; the form explicitly tells the visitor that the request was received but a confirmation email could not be sent. To temporarily disable the attempt, change `ENABLE_AUTOREPLY` to `false` and redeploy.
 
 ## 5. Local preview
 

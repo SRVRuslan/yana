@@ -178,6 +178,9 @@
   const quoteSubmit = document.querySelector('#quote-submit');
   const quoteSubmitLabel = quoteForm?.querySelector('[data-quote-submit-label]');
   const quoteTurnstile = document.querySelector('#quote-turnstile');
+  const quoteSuccess = document.querySelector('#quote-success');
+  const quoteSuccessName = document.querySelector('#quote-success-name');
+  const quoteSuccessMessage = document.querySelector('#quote-success-message');
   let quoteWidgetId;
   let quoteSecurityPromise;
   let quoteSubmitting = false;
@@ -192,6 +195,28 @@
     '2500-2999': '2,500–2,999 sq ft',
     '3000-plus': '3,000+ sq ft',
   };
+
+  function setQuoteStatus(message = '', state = '') {
+    if (!quoteStatus) return;
+    quoteStatus.textContent = message;
+    if (state) quoteStatus.dataset.state = state;
+    else delete quoteStatus.dataset.state;
+  }
+
+  function resetQuoteExperience(focusName = false) {
+    if (!quoteForm) return;
+    quoteForm.classList.remove('is-success');
+    if (quoteSuccess) quoteSuccess.hidden = true;
+    quoteForm.reset();
+    updateQuote(false);
+    setQuoteStatus();
+    setQuoteSubmitState(true);
+    if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
+    if (focusName) {
+      const nameField = quoteForm.elements.namedItem('name');
+      if (nameField instanceof HTMLElement) nameField.focus({ preventScroll: true });
+    }
+  }
 
   function readQuote() {
     if (!quoteForm) return null;
@@ -247,12 +272,13 @@
     if (disclaimerDetails) disclaimerDetails.textContent = quote.isCarpet
       ? ' The rate shown is before tax and is charged per room. The number, size, and condition of the rooms will determine the final price. Scope is confirmed before booking.'
       : ' The rate shown is before tax and is charged per cleaner, per hour. The condition of the space, cleaning priorities, and total time required will determine the final price. Scope and anticipated hours are confirmed before booking.';
-    if (clearStatus && quoteStatus) quoteStatus.textContent = '';
+    if (clearStatus) setQuoteStatus();
     return quote;
   }
 
   function openQuote(trigger, requestedService) {
     if (!quoteForm || !quoteDialog) return;
+    if (quoteForm.classList.contains('is-success')) resetQuoteExperience();
     const serviceSelect = quoteForm.elements.namedItem('service');
     if (requestedService && Object.hasOwn(services, requestedService) && serviceSelect) serviceSelect.value = requestedService;
     updateQuote();
@@ -277,6 +303,12 @@
     if (closeButton) {
       event.preventDefault();
       closeButton.closest('dialog')?.close();
+      return;
+    }
+
+    if (event.target.closest('[data-new-quote]')) {
+      event.preventDefault();
+      resetQuoteExperience(true);
       return;
     }
 
@@ -323,9 +355,7 @@
 
     if (event.target.closest('[data-reset-quote]') && quoteForm) {
       event.preventDefault();
-      quoteForm.reset();
-      updateQuote();
-      if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
+      resetQuoteExperience(true);
     }
   });
 
@@ -333,7 +363,11 @@
     quoteForm.addEventListener('change', () => updateQuote());
     quoteForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (quoteSubmitting || !quoteForm.reportValidity()) return;
+      if (quoteSubmitting) return;
+      if (!quoteForm.reportValidity()) {
+        setQuoteStatus('Please complete the highlighted contact field.', 'error');
+        return;
+      }
       const quote = updateQuote(false);
       if (!quote) return;
 
@@ -342,13 +376,14 @@
         ? window.turnstile.getResponse(quoteWidgetId)
         : '';
       if (!turnstileToken) {
-        if (quoteStatus) quoteStatus.textContent = 'Please complete the security check.';
+        setQuoteStatus('Please complete the security check.', 'error');
         return;
       }
 
       quoteSubmitting = true;
+      let submissionSucceeded = false;
       setQuoteSubmitState(true, 'Sending…');
-      if (quoteStatus) quoteStatus.textContent = 'Sending your request securely…';
+      setQuoteStatus('Sending your request securely…', 'progress');
 
       try {
         const response = await fetch('/api/quotes', {
@@ -370,17 +405,32 @@
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.message || 'Your request could not be sent. Please try again.');
 
+        submissionSucceeded = true;
+        const submittedName = String(values.get('name') || '').trim();
+        const submittedEmail = String(values.get('email') || '').trim();
         quoteForm.reset();
         updateQuote(false);
-        if (quoteStatus) quoteStatus.textContent = result.message;
+        setQuoteStatus();
+        if (quoteSuccessName) quoteSuccessName.textContent = submittedName ? `${submittedName}.` : 'we’ve got it.';
+        if (quoteSuccessMessage) {
+          quoteSuccessMessage.textContent = result.acknowledgementQueued
+            ? `Your cleaning request was sent to Care & Clean. A confirmation email was submitted for delivery to ${submittedEmail}. We’ll get back to you shortly.`
+            : 'Your cleaning request was sent to Care & Clean. The confirmation email could not be sent, but your request was received and we’ll get back to you shortly.';
+        }
+        quoteForm.classList.add('is-success');
+        if (quoteSuccess) quoteSuccess.hidden = false;
+        quoteDialog?.scrollTo({ top: 0, behavior: motionQuery.matches ? 'auto' : 'smooth' });
+        quoteSuccess?.querySelector('button')?.focus({ preventScroll: true });
       } catch (submitError) {
-        if (quoteStatus) quoteStatus.textContent = submitError instanceof Error
+        setQuoteStatus(submitError instanceof Error
           ? submitError.message
-          : 'Your request could not be sent. Please try again.';
+          : 'Your request could not be sent. Please try again.', 'error');
       } finally {
         quoteSubmitting = false;
-        setQuoteSubmitState(true);
-        if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
+        if (!submissionSucceeded) {
+          setQuoteSubmitState(true);
+          if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
+        }
       }
     });
     updateQuote();
@@ -455,7 +505,7 @@
   async function prepareQuoteForm() {
     if (!quoteForm || !quoteTurnstile || quoteWidgetId !== undefined || quoteSecurityPromise) return quoteSecurityPromise;
     setQuoteSubmitState(true);
-    if (quoteStatus) quoteStatus.textContent = 'Loading the secure form…';
+    setQuoteStatus('Loading the secure form…', 'progress');
 
     quoteSecurityPromise = (async () => {
       const config = await getFormSecurityConfig();
@@ -469,20 +519,20 @@
         size: 'flexible',
         callback: () => {
           if (!quoteSubmitting) setQuoteSubmitState(false);
-          if (quoteStatus?.textContent === 'Loading the secure form…') quoteStatus.textContent = '';
+          if (quoteStatus?.textContent === 'Loading the secure form…') setQuoteStatus();
         },
         'expired-callback': () => {
           setQuoteSubmitState(true);
-          if (quoteStatus) quoteStatus.textContent = 'The security check expired. Please complete it again.';
+          setQuoteStatus('The security check expired. Please complete it again.', 'error');
         },
         'error-callback': () => {
           setQuoteSubmitState(true);
-          if (quoteStatus) quoteStatus.textContent = 'The security check could not load. Please refresh the page or email us.';
+          setQuoteStatus('The security check could not load. Please refresh the page or email us.', 'error');
         },
       });
     })().catch((setupError) => {
       console.error('Estimate form setup failed:', setupError);
-      if (quoteStatus) quoteStatus.textContent = 'The secure form is temporarily unavailable. Please call +1 (403) 667-4392 or email care.cleanyyc@outlook.com.';
+      setQuoteStatus('The secure form is temporarily unavailable. Please call +1 (403) 667-4392 or email care.cleanyyc@outlook.com.', 'error');
       throw setupError;
     });
 

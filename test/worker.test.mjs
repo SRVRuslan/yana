@@ -101,6 +101,18 @@ test('validates contact details on cleaning requests', async () => {
   assert.equal(sent.length, 0);
 });
 
+test('accepts common phone number formatting and extensions', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({ success: true, action: 'quote', hostname: 'carecleanhome.ca' });
+
+  const { env, sent } = createEnv();
+  const response = await worker.fetch(quoteRequest({ ...validQuote, phone: '403.667.4392 ext 5' }), env);
+
+  assert.equal(response.status, 200);
+  assert.equal(sent.length, 1);
+});
+
 test('sends a complete cleaning request and client acknowledgement', async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
@@ -117,12 +129,31 @@ test('sends a complete cleaning request and client acknowledgement', async (cont
 
   assert.equal(response.status, 200);
   assert.equal(result.ok, true);
+  assert.equal(result.acknowledgementQueued, true);
   assert.equal(sent.length, 2);
   assert.equal(sent[0].to, 'care.cleanyyc@outlook.com');
   assert.deepEqual(sent[0].replyTo, { email: 'olena@example.com', name: 'Olena' });
   assert.match(sent[0].text, /Phone: \+1 \(403\) 555-0123/);
   assert.match(sent[0].text, /Residential cleaning/);
   assert.equal(sent[1].to, 'olena@example.com');
+});
+
+test('keeps the request successful when the optional acknowledgement fails', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({ success: true, action: 'quote', hostname: 'carecleanhome.ca' });
+
+  const { env, sent } = createEnv({
+    ENABLE_AUTOREPLY: 'true',
+    EMAIL: { send: async () => { throw new Error('Paid plan required'); } },
+  });
+  const response = await worker.fetch(quoteRequest(), env);
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.ok, true);
+  assert.equal(result.acknowledgementQueued, false);
+  assert.equal(sent.length, 1);
 });
 
 test('verifies Turnstile and sends the owner notification with reply-to', async (context) => {

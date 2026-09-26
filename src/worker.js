@@ -103,8 +103,12 @@ async function handleQuote(request, env, url) {
     return error('We could not send your request right now. Please try again or call +1 (403) 667-4392.', 502);
   }
 
-  await sendAcknowledgement(env, quote.value.name, quote.value.email);
-  return json({ ok: true, message: 'Thank you. Your request has been sent. We’ll get back to you shortly.' });
+  const acknowledgementQueued = await sendAcknowledgement(env, quote.value.name, quote.value.email);
+  return json({
+    ok: true,
+    acknowledgementQueued,
+    message: 'Thank you. Your request has been sent. We’ll get back to you shortly.',
+  });
 }
 
 async function handleReview(request, env, url) {
@@ -204,7 +208,10 @@ function validateQuote(input) {
   const bathrooms = Number(input.bathrooms);
 
   if (name.length < 2) return { ok: false, message: 'Please enter your name.' };
-  if (!/^[+()0-9.\-\s]{7,30}$/.test(phone)) return { ok: false, message: 'Please enter a valid phone number.' };
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+    return { ok: false, message: 'Please enter a phone number with 7 to 15 digits.' };
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) return { ok: false, message: 'Please enter a valid email address.' };
   if (!Object.hasOwn(QUOTE_SERVICES, service)) return { ok: false, message: 'Please choose a service.' };
   if (!Object.hasOwn(QUOTE_SQUARE_FEET, squareFeet)) return { ok: false, message: 'Please choose the size of your space.' };
@@ -288,7 +295,7 @@ async function verifyTurnstile(token, request, env, expectedAction) {
 }
 
 async function sendAcknowledgement(env, name, emailAddress) {
-  if (env.ENABLE_AUTOREPLY !== 'true' || !env.EMAIL) return;
+  if (env.ENABLE_AUTOREPLY !== 'true' || !env.EMAIL) return false;
   try {
     await env.EMAIL.send({
       from: { email: env.EMAIL_AUTOREPLY_FROM || env.EMAIL_FROM, name: 'Care & Clean Home Inc.' },
@@ -297,9 +304,11 @@ async function sendAcknowledgement(env, name, emailAddress) {
       text: `Hi ${name},\n\nThank you for contacting Care & Clean Home Inc. We have received your request and will get back to you shortly.\n\nCare & Clean Home Inc.\nCalgary, Alberta\n+1 (403) 667-4392`,
       html: `<p>Hi ${escapeHtml(name)},</p><p>Thank you for contacting Care &amp; Clean Home Inc. We have received your request and will get back to you shortly.</p><p>Care &amp; Clean Home Inc.<br>Calgary, Alberta<br><a href="tel:+14036674392">+1 (403) 667-4392</a></p>`,
     });
+    return true;
   } catch (sendError) {
     // The submission remains successful if only the optional acknowledgement fails.
     console.error('Client acknowledgement email failed:', sendError);
+    return false;
   }
 }
 
