@@ -283,6 +283,7 @@
     if (reviewButton) {
       event.preventDefault();
       openDialog(reviewDialog, reviewButton);
+      prepareReviewForm();
       return;
     }
 
@@ -375,6 +376,12 @@
   const reviewMessage = document.querySelector('#review-message');
   const reviewCharacterCount = document.querySelector('#review-character-count');
   const reviewStatus = document.querySelector('#review-status');
+  const reviewSubmit = reviewForm?.querySelector('[type="submit"]');
+  const reviewSubmitLabel = reviewForm?.querySelector('[data-review-submit-label]');
+  const reviewTurnstile = document.querySelector('#review-turnstile');
+  let reviewWidgetId;
+  let reviewSecurityPromise;
+  let reviewSubmitting = false;
 
   function updateReviewCharacterCount() {
     if (reviewMessage && reviewCharacterCount) reviewCharacterCount.textContent = String(reviewMessage.value.length);
@@ -383,36 +390,122 @@
   reviewMessage?.addEventListener('input', updateReviewCharacterCount);
   updateReviewCharacterCount();
 
-  reviewForm?.addEventListener('submit', (event) => {
+  function setReviewSubmitState(disabled, label = 'Send my review') {
+    if (reviewSubmit instanceof HTMLButtonElement) {
+      reviewSubmit.disabled = disabled;
+      reviewSubmit.setAttribute('aria-busy', String(reviewSubmitting));
+    }
+    if (reviewSubmitLabel) reviewSubmitLabel.textContent = label;
+  }
+
+  function loadTurnstileScript() {
+    if (window.turnstile) return Promise.resolve(window.turnstile);
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-turnstile-script]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(window.turnstile), { once: true });
+        existing.addEventListener('error', reject, { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstileScript = '';
+      script.addEventListener('load', () => resolve(window.turnstile), { once: true });
+      script.addEventListener('error', reject, { once: true });
+      document.head.append(script);
+    });
+  }
+
+  async function prepareReviewForm() {
+    if (!reviewForm || !reviewTurnstile || reviewWidgetId !== undefined || reviewSecurityPromise) return reviewSecurityPromise;
+    setReviewSubmitState(true);
+    if (reviewStatus) reviewStatus.textContent = 'Loading the secure form…';
+
+    reviewSecurityPromise = (async () => {
+      const response = await fetch('/api/form-config', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      const config = await response.json().catch(() => ({}));
+      if (!response.ok || !config.turnstileSiteKey) throw new Error('The secure form is not configured yet.');
+
+      const turnstile = await loadTurnstileScript();
+      if (!turnstile) throw new Error('The security check could not be loaded.');
+
+      reviewWidgetId = turnstile.render(reviewTurnstile, {
+        sitekey: config.turnstileSiteKey,
+        action: 'review',
+        theme: 'light',
+        size: 'flexible',
+        callback: () => {
+          if (!reviewSubmitting) setReviewSubmitState(false);
+          if (reviewStatus?.textContent === 'Loading the secure form…') reviewStatus.textContent = '';
+        },
+        'expired-callback': () => {
+          setReviewSubmitState(true);
+          if (reviewStatus) reviewStatus.textContent = 'The security check expired. Please complete it again.';
+        },
+        'error-callback': () => {
+          setReviewSubmitState(true);
+          if (reviewStatus) reviewStatus.textContent = 'The security check could not load. Please refresh the page or email us.';
+        },
+      });
+    })().catch((setupError) => {
+      console.error('Review form setup failed:', setupError);
+      if (reviewStatus) reviewStatus.textContent = 'The secure form is temporarily unavailable. Please email care.cleanyyc@outlook.com.';
+      throw setupError;
+    });
+
+    return reviewSecurityPromise;
+  }
+
+  reviewForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!reviewForm.reportValidity()) return;
+    if (reviewSubmitting || !reviewForm.reportValidity()) return;
 
     const values = new FormData(reviewForm);
-    const name = String(values.get('name') || '').trim();
-    const email = String(values.get('email') || '').trim();
-    const service = String(values.get('service') || '').trim();
-    const visitDate = String(values.get('visit-date') || '').trim();
-    const rating = String(values.get('rating') || '').trim();
-    const review = String(values.get('review') || '').trim();
-    const subject = `Client review from ${name}`;
-    const message = [
-      'CARE & CLEAN HOME INC. — CLIENT REVIEW',
-      '',
-      `First name: ${name}`,
-      `Contact email: ${email}`,
-      `Service: ${service}`,
-      `Approximate visit date: ${visitDate || 'Not provided'}`,
-      `Rating: ${rating}/5`,
-      '',
-      'Review:',
-      review,
-      '',
-      'Permission confirmed: This is my own experience. Care & Clean may contact me to verify it, and may publish my first name and review after verification.',
-    ].join('\n');
-    const mailto = `mailto:care.cleanyyc@outlook.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+    const turnstileToken = window.turnstile && reviewWidgetId !== undefined
+      ? window.turnstile.getResponse(reviewWidgetId)
+      : '';
+    if (!turnstileToken) {
+      if (reviewStatus) reviewStatus.textContent = 'Please complete the security check.';
+      return;
+    }
 
-    if (reviewStatus) reviewStatus.textContent = 'Your email app is opening. Please send the prepared message to submit your review.';
-    window.location.href = mailto;
+    reviewSubmitting = true;
+    setReviewSubmitState(true, 'Sending…');
+    if (reviewStatus) reviewStatus.textContent = 'Sending your review securely…';
+
+    try {
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          name: String(values.get('name') || '').trim(),
+          email: String(values.get('email') || '').trim(),
+          service: String(values.get('service') || '').trim(),
+          visitDate: String(values.get('visit-date') || '').trim(),
+          rating: Number(values.get('rating')),
+          review: String(values.get('review') || '').trim(),
+          permission: values.get('permission') === 'on',
+          website: String(values.get('website') || ''),
+          turnstileToken,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.message || 'Your review could not be sent. Please try again.');
+
+      reviewForm.reset();
+      updateReviewCharacterCount();
+      if (reviewStatus) reviewStatus.textContent = result.message;
+    } catch (submitError) {
+      if (reviewStatus) reviewStatus.textContent = submitError instanceof Error
+        ? submitError.message
+        : 'Your review could not be sent. Please try again.';
+    } finally {
+      reviewSubmitting = false;
+      setReviewSubmitState(true);
+      if (window.turnstile && reviewWidgetId !== undefined) window.turnstile.reset(reviewWidgetId);
+    }
   });
 
   const heroCarousel = document.querySelector('[data-hero-carousel]');

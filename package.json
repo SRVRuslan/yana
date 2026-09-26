@@ -1,0 +1,15 @@
+{
+  "name": "care-clean-home",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sh scripts/build.sh",
+    "test": "node --test",
+    "check": "npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.141.0"
+  }
+}

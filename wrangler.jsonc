@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yana",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-26",
+  "routes": [
+    {
+      "pattern": "carecleanhome.ca",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.carecleanhome.ca",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+    "not_found_handling": "404-page"
+  },
+  "send_email": [
+    {
+      "name": "NOTIFY_OWNER",
+      "destination_address": "care.cleanyyc@outlook.com"
+    },
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["hello@carecleanhome.ca"]
+    }
+  ],
+  "vars": {
+    "EMAIL_FROM": "reviews@carecleanhome.ca",
+    "EMAIL_TO": "care.cleanyyc@outlook.com",
+    "EMAIL_AUTOREPLY_FROM": "hello@carecleanhome.ca",
+    "ENABLE_AUTOREPLY": "true",
+    "SITE_HOSTNAMES": "carecleanhome.ca,www.carecleanhome.ca,yana.ruslan-savchuk-dev-ca.workers.dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
