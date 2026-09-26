@@ -175,6 +175,13 @@
   const quoteForm = document.querySelector('#quote-form');
   const frequencyOptions = document.querySelector('#frequency-options');
   const quoteStatus = document.querySelector('#quote-status');
+  const quoteSubmit = document.querySelector('#quote-submit');
+  const quoteSubmitLabel = quoteForm?.querySelector('[data-quote-submit-label]');
+  const quoteTurnstile = document.querySelector('#quote-turnstile');
+  let quoteWidgetId;
+  let quoteSecurityPromise;
+  let quoteSubmitting = false;
+  let formSecurityConfigPromise;
   const currency = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 });
   const frequencyLabels = { weekly: 'Every week', biweekly: 'Every two weeks', monthly: 'Every month', once: 'One-time clean' };
   const squareFootageLabels = {
@@ -251,6 +258,7 @@
     updateQuote();
     const focusTarget = serviceDialog?.open ? returnFocus.get(serviceDialog) : trigger;
     openDialog(quoteDialog, focusTarget);
+    prepareQuoteForm();
   }
 
   document.addEventListener('click', (event) => {
@@ -317,57 +325,63 @@
       event.preventDefault();
       quoteForm.reset();
       updateQuote();
+      if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
     }
   });
 
   if (quoteForm) {
     quoteForm.addEventListener('change', () => updateQuote());
-    quoteForm.addEventListener('submit', (event) => {
+    quoteForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (quoteSubmitting || !quoteForm.reportValidity()) return;
       const quote = updateQuote(false);
       if (!quote) return;
 
-      const date = new Date();
-      const formattedDate = new Intl.DateTimeFormat('en-CA', { dateStyle: 'long' }).format(date);
-      const pricingLines = quote.isCarpet
-        ? [`Carpet cleaning rate: ${quote.rateText} CAD per room`, 'The rate per room depends on the size of the room.']
-        : [`Hourly rate: ${quote.rateText} CAD per hour for one cleaner`];
-      const finalPriceNote = quote.isCarpet
-        ? 'The final carpet cleaning cost depends on the number, size, and condition of the rooms.'
-        : 'The final cleaning cost depends on the amount of work, the condition of the space, and the time required.';
-      const confirmationNote = quote.isCarpet
-        ? 'The number of rooms, room sizes, and final scope must be confirmed before booking.'
-        : 'The scope and anticipated hours must be confirmed before booking.';
-      const lines = [
-        'CARE & CLEAN HOME INC. — CLEANING RATE SUMMARY',
-        'Calgary, Alberta',
-        `Prepared: ${formattedDate}`,
-        '',
-        `Service: ${services[quote.service].title}`,
-        `Square feet: ${squareFootageLabels[quote.squareFeet]}`,
-        `Bathrooms / washrooms: ${quote.service === 'carpet' ? 'Not applicable' : quote.bathrooms}`,
-        `Frequency: ${frequencyLabels[quote.frequency]}`,
-        `Additional details: ${quote.notes || 'Not provided'}`,
-        '',
-        ...pricingLines,
-        'Applicable taxes are not included.',
-        '',
-        'This is a rate summary, not a confirmed total or appointment.',
-        finalPriceNote,
-        confirmationNote,
-        'No booking has been made, and no information has been sent.',
-      ];
-      const file = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      const localDate = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
-      link.href = url;
-      link.download = `care-clean-rate-summary-${localDate}.txt`;
-      body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (quoteStatus) quoteStatus.textContent = 'Your rate summary has been downloaded. No booking has been made.';
+      const values = new FormData(quoteForm);
+      const turnstileToken = window.turnstile && quoteWidgetId !== undefined
+        ? window.turnstile.getResponse(quoteWidgetId)
+        : '';
+      if (!turnstileToken) {
+        if (quoteStatus) quoteStatus.textContent = 'Please complete the security check.';
+        return;
+      }
+
+      quoteSubmitting = true;
+      setQuoteSubmitState(true, 'Sending…');
+      if (quoteStatus) quoteStatus.textContent = 'Sending your request securely…';
+
+      try {
+        const response = await fetch('/api/quotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            name: String(values.get('name') || '').trim(),
+            phone: String(values.get('phone') || '').trim(),
+            email: String(values.get('email') || '').trim(),
+            service: quote.service,
+            squareFeet: quote.squareFeet,
+            bathrooms: quote.bathrooms,
+            frequency: quote.frequency,
+            notes: quote.notes,
+            website: String(values.get('website') || ''),
+            turnstileToken,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.message || 'Your request could not be sent. Please try again.');
+
+        quoteForm.reset();
+        updateQuote(false);
+        if (quoteStatus) quoteStatus.textContent = result.message;
+      } catch (submitError) {
+        if (quoteStatus) quoteStatus.textContent = submitError instanceof Error
+          ? submitError.message
+          : 'Your request could not be sent. Please try again.';
+      } finally {
+        quoteSubmitting = false;
+        setQuoteSubmitState(true);
+        if (window.turnstile && quoteWidgetId !== undefined) window.turnstile.reset(quoteWidgetId);
+      }
     });
     updateQuote();
   }
@@ -418,16 +432,70 @@
     });
   }
 
+  function getFormSecurityConfig() {
+    if (!formSecurityConfigPromise) {
+      formSecurityConfigPromise = fetch('/api/form-config', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+        .then(async (response) => {
+          const config = await response.json().catch(() => ({}));
+          if (!response.ok || !config.turnstileSiteKey) throw new Error('The secure form is not configured yet.');
+          return config;
+        });
+    }
+    return formSecurityConfigPromise;
+  }
+
+  function setQuoteSubmitState(disabled, label = 'Send my request') {
+    if (quoteSubmit instanceof HTMLButtonElement) {
+      quoteSubmit.disabled = disabled;
+      quoteSubmit.setAttribute('aria-busy', String(quoteSubmitting));
+    }
+    if (quoteSubmitLabel) quoteSubmitLabel.textContent = label;
+  }
+
+  async function prepareQuoteForm() {
+    if (!quoteForm || !quoteTurnstile || quoteWidgetId !== undefined || quoteSecurityPromise) return quoteSecurityPromise;
+    setQuoteSubmitState(true);
+    if (quoteStatus) quoteStatus.textContent = 'Loading the secure form…';
+
+    quoteSecurityPromise = (async () => {
+      const config = await getFormSecurityConfig();
+      const turnstile = await loadTurnstileScript();
+      if (!turnstile) throw new Error('The security check could not be loaded.');
+
+      quoteWidgetId = turnstile.render(quoteTurnstile, {
+        sitekey: config.turnstileSiteKey,
+        action: 'quote',
+        theme: 'light',
+        size: 'flexible',
+        callback: () => {
+          if (!quoteSubmitting) setQuoteSubmitState(false);
+          if (quoteStatus?.textContent === 'Loading the secure form…') quoteStatus.textContent = '';
+        },
+        'expired-callback': () => {
+          setQuoteSubmitState(true);
+          if (quoteStatus) quoteStatus.textContent = 'The security check expired. Please complete it again.';
+        },
+        'error-callback': () => {
+          setQuoteSubmitState(true);
+          if (quoteStatus) quoteStatus.textContent = 'The security check could not load. Please refresh the page or email us.';
+        },
+      });
+    })().catch((setupError) => {
+      console.error('Estimate form setup failed:', setupError);
+      if (quoteStatus) quoteStatus.textContent = 'The secure form is temporarily unavailable. Please call +1 (403) 667-4392 or email care.cleanyyc@outlook.com.';
+      throw setupError;
+    });
+
+    return quoteSecurityPromise;
+  }
+
   async function prepareReviewForm() {
     if (!reviewForm || !reviewTurnstile || reviewWidgetId !== undefined || reviewSecurityPromise) return reviewSecurityPromise;
     setReviewSubmitState(true);
     if (reviewStatus) reviewStatus.textContent = 'Loading the secure form…';
 
     reviewSecurityPromise = (async () => {
-      const response = await fetch('/api/form-config', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      const config = await response.json().catch(() => ({}));
-      if (!response.ok || !config.turnstileSiteKey) throw new Error('The secure form is not configured yet.');
-
+      const config = await getFormSecurityConfig();
       const turnstile = await loadTurnstileScript();
       if (!turnstile) throw new Error('The security check could not be loaded.');
 

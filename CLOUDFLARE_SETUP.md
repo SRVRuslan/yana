@@ -1,6 +1,6 @@
 # Cloudflare form setup
 
-The review form is served with the static site by one Cloudflare Worker. `POST /api/reviews` validates Turnstile on the server and sends a notification to `care.cleanyyc@outlook.com` through the destination-restricted `NOTIFY_OWNER` binding.
+The estimate and review forms are served with the static site by one Cloudflare Worker. `POST /api/quotes` sends cleaning requests with the client's contact details, while `POST /api/reviews` sends client reviews. Both endpoints validate Turnstile on the server and deliver notifications to `care.cleanyyc@outlook.com` through the destination-restricted `NOTIFY_OWNER` binding.
 
 ## 1. Onboard the domain for Email Sending
 
@@ -44,7 +44,7 @@ The deployment configuration attaches both `carecleanhome.ca` and `www.careclean
 
 ## 4. Email modes
 
-`ENABLE_AUTOREPLY` is enabled. The owner notification is sent to the verified Outlook address, and the client receives a short confirmation that their request was received and that the team will respond shortly.
+`ENABLE_AUTOREPLY` is enabled. The owner notification is sent to the verified Outlook address, and the client receives a short confirmation that their request was received and that the team will respond shortly. The estimate notification includes the client's name, phone, email, selected service, space details, frequency, notes, and planning rate.
 
 The separate `EMAIL` binding is restricted to the `hello@carecleanhome.ca` sender. Sending the acknowledgement to arbitrary client addresses requires Workers Paid. To temporarily disable it, change `ENABLE_AUTOREPLY` to `false` and redeploy.
 

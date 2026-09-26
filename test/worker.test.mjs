@@ -14,6 +14,19 @@ const validReview = {
   turnstileToken: 'valid-test-token',
 };
 
+const validQuote = {
+  name: 'Olena',
+  phone: '+1 (403) 555-0123',
+  email: 'olena@example.com',
+  service: 'residential',
+  squareFeet: '1000-1499',
+  bathrooms: 2,
+  frequency: 'biweekly',
+  notes: 'Please focus on the kitchen and bathrooms.',
+  website: '',
+  turnstileToken: 'valid-test-token',
+};
+
 function createEnv(overrides = {}) {
   const sent = [];
   return {
@@ -34,6 +47,18 @@ function createEnv(overrides = {}) {
 
 function reviewRequest(body = validReview, headers = {}) {
   return new Request('https://carecleanhome.ca/api/reviews', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: 'https://carecleanhome.ca',
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function quoteRequest(body = validQuote, headers = {}) {
+  return new Request('https://carecleanhome.ca/api/quotes', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -65,6 +90,39 @@ test('validates required review fields before sending email', async () => {
   assert.equal(response.status, 400);
   assert.match(result.message, /20 characters/);
   assert.equal(sent.length, 0);
+});
+
+test('validates contact details on cleaning requests', async () => {
+  const { env, sent } = createEnv();
+  const response = await worker.fetch(quoteRequest({ ...validQuote, phone: '12' }), env);
+  const result = await response.json();
+  assert.equal(response.status, 400);
+  assert.match(result.message, /phone number/);
+  assert.equal(sent.length, 0);
+});
+
+test('sends a complete cleaning request and client acknowledgement', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.response, 'valid-test-token');
+    return Response.json({ success: true, action: 'quote', hostname: 'carecleanhome.ca' });
+  };
+
+  const { env, sent } = createEnv({ ENABLE_AUTOREPLY: 'true', EMAIL_AUTOREPLY_FROM: 'hello@carecleanhome.ca' });
+  const response = await worker.fetch(quoteRequest(), env);
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.ok, true);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].to, 'care.cleanyyc@outlook.com');
+  assert.deepEqual(sent[0].replyTo, { email: 'olena@example.com', name: 'Olena' });
+  assert.match(sent[0].text, /Phone: \+1 \(403\) 555-0123/);
+  assert.match(sent[0].text, /Residential cleaning/);
+  assert.equal(sent[1].to, 'olena@example.com');
 });
 
 test('verifies Turnstile and sends the owner notification with reply-to', async (context) => {
@@ -100,6 +158,21 @@ test('rejects a Turnstile result with the wrong action', async (context) => {
   const response = await worker.fetch(reviewRequest(), env);
   assert.equal(response.status, 400);
   assert.equal(sent.length, 0);
+});
+
+test('accepts Cloudflare Turnstile test-key metadata during local development', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({
+    success: true,
+    hostname: 'example.com',
+    metadata: { result_with_testing_key: true },
+  });
+
+  const { env, sent } = createEnv();
+  const response = await worker.fetch(quoteRequest(), env);
+  assert.equal(response.status, 200);
+  assert.equal(sent.length, 1);
 });
 
 test('sends the optional client acknowledgement only when enabled', async (context) => {
